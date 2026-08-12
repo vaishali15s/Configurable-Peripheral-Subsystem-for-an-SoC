@@ -161,9 +161,13 @@ module uart_top_tb;
     endtask
 
     initial begin
+        $dumpfile("uart_top_tb.vcd");
+        $dumpvars(0, uart_top_tb);
+        
         clk = 1'b0;
         forever #5 clk = ~clk;
     end
+        
 
     initial begin
         rst_n   = 1'b0;
