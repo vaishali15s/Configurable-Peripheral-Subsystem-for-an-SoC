@@ -305,6 +305,7 @@ module uart_top_tb;
         check(tx === 1'b1, "tx idle high after full duplex frame");
 
         $display("All UART tests passed.");
+        $fflush();
         $finish;
     end
 
