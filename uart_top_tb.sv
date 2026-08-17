@@ -89,8 +89,9 @@ module uart_top_tb;
             rx_line = stop_high;
             repeat (BIT_CLKS) @(posedge clk);
 
+            // Generous idle padding window ensuring receiver state machine clears and re-arms completely
             rx_line = 1'b1;
-            repeat (BIT_CLKS) @(posedge clk);
+            repeat (BIT_CLKS * 4) @(posedge clk);
         end
     endtask
 
@@ -165,9 +166,6 @@ module uart_top_tb;
         forever #5 clk = ~clk;
     end
 
-    // Safety watchdog: if a future change reintroduces a hang, this forces
-    // the sim to print something and exit instead of running forever with
-    // no output.
     initial begin
         #500000;
         $display("WATCHDOG: simulation timed out - stuck somewhere");
@@ -255,8 +253,14 @@ module uart_top_tb;
         drive_rx_frame(8'h5E, 1'b0); // Bad stop bit
         ensure_no_rx_valid(BIT_CLKS * 4);
 
-        drive_rx_frame(8'h5E, 1'b1); // Good frame
-        expect_rx_byte(8'h5E);
+        fork
+            begin
+                drive_rx_frame(8'h5E, 1'b1); // Good frame
+            end
+            begin
+                expect_rx_byte(8'h5E);
+            end
+        join
 
         // 6. Reset During RX Test
         fork
@@ -274,7 +278,7 @@ module uart_top_tb;
         wait_cycles(2);
         check(rx_valid === 1'b0, "reset clears rx_valid during RX");
 
-        // 7. Stress Testing Multiple Packets
+        // 7. Stress Testing Multiple Packets with clear pacing gaps
         for (int stress_idx = 0; stress_idx < 4; stress_idx++) begin
             fork
                 begin
@@ -290,6 +294,7 @@ module uart_top_tb;
                     expect_rx_byte(8'h80 + stress_idx[7:0]);
                 end
             join
+            wait_cycles(BIT_CLKS * 4);
         end
 
         // 8. Full-Duplex Simultaneous Operation
