@@ -165,6 +165,12 @@ module uart_top_tb;
         forever #5 clk = ~clk;
     end
 
+    initial begin
+    #100000;
+    $display("WATCHDOG: simulation timed out — stuck somewhere");
+    $finish;
+    end
+
 
     initial begin
         rst_n   = 1'b0;
