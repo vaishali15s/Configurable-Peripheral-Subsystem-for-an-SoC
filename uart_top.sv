@@ -14,7 +14,13 @@ module uart_top #(
 );
 
     localparam int BIT_CLKS   = CLK_FREQ / BAUD_RATE;
-    localparam int DIVISOR    = BIT_CLKS / 16;
+
+    // FIX: BIT_CLKS/16 truncates to 0 whenever CLK_FREQ is not at least 16x
+    // BAUD_RATE. That drove DIVISOR-1 to -1 (wraps to a huge unsigned value
+    // that a correctly-sized DIV_WIDTH counter can never match), so tick_16x
+    // would never fire and both RX and TX would hang forever. Clamp to a
+    // minimum of 1 so the tick generator always makes progress.
+    localparam int DIVISOR    = (BIT_CLKS / 16 > 0) ? (BIT_CLKS / 16) : 1;
     localparam int DIV_WIDTH  = ($clog2(DIVISOR) > 0) ? $clog2(DIVISOR) : 1;
 
     logic [DIV_WIDTH-1:0] baud_counter;
@@ -46,10 +52,10 @@ module uart_top #(
 
     tx_state_t tx_state;
     logic [3:0] tx_bit_cnt;
-    
+
     localparam int TX_BIT_CLKS   = BIT_CLKS;
     localparam int TX_CNT_WIDTH  = ($clog2(TX_BIT_CLKS) > 0) ? $clog2(TX_BIT_CLKS) : 1;
-    
+
     logic [TX_CNT_WIDTH-1:0] tx_clk_cnt;
     logic [7:0] tx_shift_reg;
     logic tx_bit_tick;
