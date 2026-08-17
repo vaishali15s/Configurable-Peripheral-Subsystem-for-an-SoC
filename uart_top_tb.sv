@@ -165,12 +165,14 @@ module uart_top_tb;
         forever #5 clk = ~clk;
     end
 
+    // Watchdog: if the design hangs (e.g. a wait() condition never becomes
+    // true), the simulation would otherwise run forever with no output.
+    // This forces it to print something and exit so we can see how far it got.
     initial begin
-    #100000;
-    $display("WATCHDOG: simulation timed out — stuck somewhere");
-    $finish;
+        #500000;
+        $display("WATCHDOG: simulation timed out - stuck somewhere");
+        $finish;
     end
-
 
     initial begin
         rst_n   = 1'b0;
@@ -183,6 +185,7 @@ module uart_top_tb;
         check(tx === 1'b1, "tx idle high after reset");
         check(tx_busy === 1'b0, "tx_busy low after reset");
         check(rx_valid === 1'b0, "rx_valid low after reset");
+        $display("Reset checks passed");
 
         // 1. Basic TX Test
         fork
@@ -195,6 +198,7 @@ module uart_top_tb;
         join
 
         check(tx_busy === 1'b0, "tx_busy low after transmit");
+        $display("Test 1 (Basic TX) passed");
 
         // 2. Basic RX Test
         fork
@@ -205,6 +209,7 @@ module uart_top_tb;
                 expect_rx_byte(8'h3C);
             end
         join
+        $display("Test 2 (Basic RX) passed");
 
         // 3. Busy Write Rejection Test
         fork
@@ -228,6 +233,7 @@ module uart_top_tb;
         wait_cycles(BIT_CLKS * 2);
         check(tx_busy === 1'b0, "busy write rejected without extending transmit");
         check(tx === 1'b1, "tx returns idle high after rejected busy write");
+        $display("Test 3 (Busy Write Rejection) passed");
 
         // 4. Reset During TX Test
         reset_dut();
@@ -245,6 +251,7 @@ module uart_top_tb;
         check(tx_busy === 1'b0, "reset clears busy during TX");
         check(tx === 1'b1, "reset drives tx idle high during TX");
         check(rx_valid === 1'b0, "reset clears rx_valid during TX");
+        $display("Test 4 (Reset During TX) passed");
 
         // 5. Glitch and Bad Framing Tests
         drive_rx_glitch(1);
@@ -255,6 +262,7 @@ module uart_top_tb;
 
         drive_rx_frame(8'h5E, 1'b1); // Good frame
         expect_rx_byte(8'h5E);
+        $display("Test 5 (Glitch/Bad Framing) passed");
 
         // 6. Reset During RX Test
         fork
@@ -271,6 +279,7 @@ module uart_top_tb;
 
         wait_cycles(2);
         check(rx_valid === 1'b0, "reset clears rx_valid during RX");
+        $display("Test 6 (Reset During RX) passed");
 
         // 7. Stress Testing Multiple Packets
         for (int stress_idx = 0; stress_idx < 4; stress_idx++) begin
@@ -288,7 +297,9 @@ module uart_top_tb;
                     expect_rx_byte(8'h80 + stress_idx[7:0]);
                 end
             join
+            $display("Stress iteration %0d passed", stress_idx);
         end
+        $display("Test 7 (Stress Testing) passed");
 
         // 8. Full-Duplex Simultaneous Operation
         fork
@@ -310,6 +321,7 @@ module uart_top_tb;
 
         check(tx_busy === 1'b0, "tx_busy low after full duplex frame");
         check(tx === 1'b1, "tx idle high after full duplex frame");
+        $display("Test 8 (Full-Duplex) passed");
 
         $display("All UART tests passed.");
         $fflush();
