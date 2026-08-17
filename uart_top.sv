@@ -15,11 +15,11 @@ module uart_top #(
 
     localparam int BIT_CLKS   = CLK_FREQ / BAUD_RATE;
 
-    // FIX: BIT_CLKS/16 truncates to 0 whenever CLK_FREQ is not at least 16x
-    // BAUD_RATE. That drove DIVISOR-1 to -1 (wraps to a huge unsigned value
-    // that a correctly-sized DIV_WIDTH counter can never match), so tick_16x
-    // would never fire and both RX and TX would hang forever. Clamp to a
-    // minimum of 1 so the tick generator always makes progress.
+    // GUARD: BIT_CLKS/16 truncates to 0 whenever CLK_FREQ is not at least
+    // 16x BAUD_RATE. That drove DIVISOR-1 to -1 (wraps to a huge unsigned
+    // value a correctly-sized DIV_WIDTH counter can never match), so
+    // tick_16x would never fire and both RX and TX would hang forever.
+    // Clamp to a minimum of 1 so the tick generator always makes progress.
     localparam int DIVISOR    = (BIT_CLKS / 16 > 0) ? (BIT_CLKS / 16) : 1;
     localparam int DIV_WIDTH  = ($clog2(DIVISOR) > 0) ? $clog2(DIVISOR) : 1;
 
@@ -153,6 +153,23 @@ module uart_top #(
     logic [7:0] rx_shift_reg;
     logic [1:0] rx_start_low_cnt;
 
+    // FIX: without this guard, a bad stop bit (framing error) drops
+    // rx_state straight back to RX_IDLE while the line is still physically
+    // low (mid-stop-bit). RX_IDLE's start-bit detector only needs ~2 clock
+    // cycles of low to arm, so it would immediately and falsely re-trigger
+    // on the remainder of that same low stop bit, desyncing the receiver's
+    // bit alignment from real frame boundaries for every frame after that
+    // (confirmed by simulation: this hung forever in the "bad stop bit
+    // followed by a good frame" test, since the desynced receiver's stop
+    // bit check kept failing and rx_valid never pulsed).
+    //
+    // rx_idle_ok is only set while actually sitting in RX_IDLE and the
+    // line reads high there (i.e. genuine idle time observed), and is
+    // cleared the instant a new start bit is accepted. Incidental '1'
+    // data bits mid-frame do NOT set it, so it correctly forces the
+    // receiver to see the line return high before arming detection again.
+    logic rx_idle_ok;
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rx_state         <= RX_IDLE;
@@ -162,20 +179,26 @@ module uart_top #(
             rx_start_low_cnt <= '0;
             dout             <= '0;
             rx_valid         <= 1'b0;
+            rx_idle_ok       <= 1'b1;
         end else begin
             rx_valid <= 1'b0;
 
+            if (rx_state == RX_IDLE && rx_sync2 == 1'b1) begin
+                rx_idle_ok <= 1'b1;
+            end
+
             case (rx_state)
                 RX_IDLE: begin
-                    if (rx_sync2 == 1'b0) begin
+                    if (rx_sync2 == 1'b0 && rx_idle_ok) begin
                         if (rx_start_low_cnt == 2'd1) begin
                             rx_state         <= RX_START;
                             rx_sample_cnt    <= '0;
                             rx_start_low_cnt <= '0;
+                            rx_idle_ok       <= 1'b0;
                         end else begin
                             rx_start_low_cnt <= rx_start_low_cnt + 1'b1;
                         end
-                    end else begin
+                    end else if (rx_sync2 == 1'b1) begin
                         rx_start_low_cnt <= '0;
                     end
                 end
