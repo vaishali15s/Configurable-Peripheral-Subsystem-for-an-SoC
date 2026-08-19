@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module peripheral_subsystem_top #(
+module peripheral_subsystem #(
     parameter int DATA_WIDTH  = 8,
     parameter int FIFO_DEPTH  = 16,
     parameter int CLK_DIV_W   = 8
@@ -20,8 +20,7 @@ module peripheral_subsystem_top #(
     
     // Configuration / Control Inputs
     input  logic [CLK_DIV_W-1:0]   spi_clk_div,
-    input  logic [1:0]             spi_cpol_cpha,
-    input  logic [15:0]            uart_baud_div // If your UART takes a baud divisor
+    input  logic [1:0]             spi_cpol_cpha
 );
 
     // ----------------------------------------------------
@@ -32,7 +31,7 @@ module peripheral_subsystem_top #(
     logic [DATA_WIDTH-1:0] uart_rx_data;
     logic                  uart_rx_valid;
     logic [DATA_WIDTH-1:0] uart_tx_data;
-    logic                  uart_tx_start;
+    logic                  uart_tx_wr_en;
     logic                  uart_tx_busy;
 
     // SPI TX FIFO Wires
@@ -58,28 +57,26 @@ module peripheral_subsystem_top #(
     logic [DATA_WIDTH-1:0] spi_dout;
 
     // ----------------------------------------------------
-    // 1. UART Integration (Assuming standard uart_top ports)
+    // 1. UART Integration (Using exact ports from uart_top)
     // ----------------------------------------------------
-    // Note: Adjust port names below if your specific uart_top wrapper uses 
-    // slightly different naming conventions for RX/TX streams.
-    uart_top u_uart (
+    uart_top #(
+        .CLK_FREQ(50000000),
+        .BAUD_RATE(115200)
+    ) u_uart (
         .clk(clk),
         .rst_n(rst_n),
-        .rx(uart_rx),
-        .tx(uart_tx),
-        // RX path outputs to system/TX FIFO
-        .rx_data(uart_rx_data),
+        .wr_en(uart_tx_wr_en),
+        .din(uart_tx_data),
+        .dout(uart_rx_data),
         .rx_valid(uart_rx_valid),
-        // TX path inputs from RX FIFO/system
-        .tx_data(uart_tx_data),
-        .tx_start(uart_tx_start),
-        .tx_busy(uart_tx_busy)
+        .tx_busy(uart_tx_busy),
+        .tx(uart_tx),
+        .rx(uart_rx)
     );
 
     // ----------------------------------------------------
     // 2. SPI TX FIFO (Buffers data from UART to send via SPI)
     // ----------------------------------------------------
-    // Data coming from UART RX goes into SPI TX FIFO
     assign tx_fifo_wr_en = uart_rx_valid;
     assign tx_fifo_din   = uart_rx_data;
 
@@ -92,8 +89,8 @@ module peripheral_subsystem_top #(
         .wr_en(tx_fifo_wr_en),
         .rd_en(tx_fifo_rd_en),
         .din(tx_fifo_din),
-        .almost_full_val(FIFO_DEPTH - 2),
-        .almost_empty_val(2),
+        .almost_full_val  (5'd14),
+        .almost_empty_val (5'd2),
         .dout(tx_fifo_dout),
         .full(tx_fifo_full),
         .empty(tx_fifo_empty),
@@ -139,8 +136,8 @@ module peripheral_subsystem_top #(
         .wr_en(rx_fifo_wr_en),
         .rd_en(rx_fifo_rd_en),
         .din(rx_fifo_din),
-        .almost_full_val(FIFO_DEPTH - 2),
-        .almost_empty_val(2),
+        .almost_full_val  (5'd14),
+        .almost_empty_val (5'd2),
         .dout(rx_fifo_dout),
         .full(rx_fifo_full),
         .empty(rx_fifo_empty),
@@ -152,9 +149,6 @@ module peripheral_subsystem_top #(
     // ----------------------------------------------------
     // 5. Subsystem Bridge Controller FSM
     // ----------------------------------------------------
-    // Handles automated handshaking between the SPI TX FIFO, 
-    // the SPI Master, and the UART TX channel.
-    
     typedef enum logic [1:0] {
         IDLE        = 2'b00,
         SPI_EXEC    = 2'b01,
@@ -165,45 +159,41 @@ module peripheral_subsystem_top #(
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state         <= IDLE;
-            spi_start     <= 1'b0;
-            tx_fifo_rd_en <= 1'b0;
-            rx_fifo_rd_en <= 1'b0;
-            uart_tx_data  <= '0;
-            uart_tx_start <= 1'b0;
+            state          <= IDLE;
+            spi_start      <= 1'b0;
+            tx_fifo_rd_en  <= 1'b0;
+            rx_fifo_rd_en  <= 1'b0;
+            uart_tx_data   <= '0;
+            uart_tx_wr_en  <= 1'b0;
         end else begin
             // Default control strobes
-            spi_start     <= 1'b0;
-            tx_fifo_rd_en <= 1'b0;
-            rx_fifo_rd_en <= 1'b0;
-            uart_tx_start <= 1'b0;
+            spi_start      <= 1'b0;
+            tx_fifo_rd_en  <= 1'b0;
+            rx_fifo_rd_en  <= 1'b0;
+            uart_tx_wr_en  <= 1'b0;
 
             case (state)
                 IDLE: begin
-                    // If there is data in SPI TX FIFO and SPI master is free
                     if (!tx_fifo_empty && !spi_busy) begin
-                        tx_fifo_rd_en <= 1'b1; // Pop byte from TX FIFO
-                        spi_start     <= 1'b1; // Trigger SPI transaction
+                        tx_fifo_rd_en <= 1'b1; 
+                        spi_start     <= 1'b1; 
                         state         <= SPI_EXEC;
                     end
-                    // Or if we have received data in RX FIFO and UART is free to send
                     else if (!rx_fifo_empty && !uart_tx_busy) begin
-                        rx_fifo_rd_en <= 1'b1; // Pop byte from RX FIFO
+                        rx_fifo_rd_en <= 1'b1; 
                         state         <= UART_STREAM;
                     end
                 end
 
                 SPI_EXEC: begin
-                    // Wait for SPI transaction to finish, then stream RX data to UART if available
                     if (spi_done) begin
                         state <= IDLE;
                     end
                 end
 
                 UART_STREAM: begin
-                    // Drive byte into UART TX channel
                     uart_tx_data  <= rx_fifo_dout;
-                    uart_tx_start <= 1'b1;
+                    uart_tx_wr_en <= 1'b1; // Trigger UART transmission
                     state         <= IDLE;
                 end
 
