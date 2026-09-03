@@ -2,6 +2,9 @@
 
 module sync_fifo_tb;
 
+    // The FIFO testbench checks reset flags, threshold flags, ordering,
+    // wrap-around behavior, and a short alternating stress sequence.
+
     parameter DATA_WIDTH = 8;
     parameter FIFO_DEPTH = 8;
 
@@ -52,6 +55,7 @@ module sync_fifo_tb;
     endtask
 
     task write_word;
+        // Apply a one-cycle write request and provide the word being stored.
         input [DATA_WIDTH-1:0] value;
         begin
             @(posedge clk);
@@ -63,6 +67,7 @@ module sync_fifo_tb;
     endtask
 
     task read_word;
+        // Apply a one-cycle read request, then inspect the combinational data.
         begin
             @(posedge clk);
             rd_en = 1'b1;
@@ -134,7 +139,7 @@ module sync_fifo_tb;
         read_word();
         check_condition(dout === 8'h11, "second read data");
 
-        // Additional reset and edge-case checks
+        // Additional reset and edge-case checks verify reusable initialization.
         reset_fifo();
         almost_full_val = 4;
         almost_empty_val = 2;
@@ -148,7 +153,7 @@ module sync_fifo_tb;
         check_condition(empty === 1'b0, "empty after first write");
         check_condition(full === 1'b0, "full after first write");
 
-        // Fill FIFO and verify full flag
+        // Fill FIFO and verify the full flag at the configured capacity.
         for (i = 0; i < 7; i = i + 1) begin
             write_word(8'h10 + i);
         end
@@ -157,7 +162,7 @@ module sync_fifo_tb;
         check_condition(almost_full === 1'b1, "almost_full after second fill");
         check_condition(data_count === 8, "data_count after second fill");
 
-        // Wrap-around test: read some, write some, then read the rest
+        // Wrap around both pointers and verify FIFO ordering is preserved.
         for (i = 0; i < 4; i = i + 1) begin
             read_word();
             if (i == 0) begin
@@ -183,7 +188,7 @@ module sync_fifo_tb;
             end
         end
 
-        // Stress sequence: alternating writes and reads with a deterministic pattern
+        // Stress the boundary checks with deterministic alternating traffic.
         reset_fifo();
         for (i = 0; i < 10; i = i + 1) begin
             if ((i % 3) == 0) begin

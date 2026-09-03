@@ -2,6 +2,10 @@
 
 module uart_top_tb;
 
+    // This testbench drives and observes UART frames at a reduced simulation
+    // baud rate so normal, malformed, reset, busy, and full-duplex behavior
+    // can be checked without changing the UART implementation.
+
     localparam int CLK_FREQ  = 320;
     localparam int BAUD_RATE = 10;
     localparam int BIT_CLKS   = CLK_FREQ / BAUD_RATE;
@@ -73,6 +77,7 @@ module uart_top_tb;
     endtask
 
     task automatic drive_rx_frame;
+        // Drive start, eight LSB-first data bits, and a selectable stop bit.
         input logic [7:0] value;
         input bit stop_high;
         int bit_idx;
@@ -123,6 +128,7 @@ module uart_top_tb;
     endtask
 
     task automatic expect_tx_frame;
+        // Verify the transmitted start bit, frame duration, and idle recovery.
         input logic [7:0] expected;
         int frame_cycles;
         begin
@@ -184,7 +190,7 @@ module uart_top_tb;
         check(tx_busy === 1'b0, "tx_busy low after reset");
         check(rx_valid === 1'b0, "rx_valid low after reset");
 
-        // 1. Basic TX Test
+        // 1. Basic TX Test: accept one byte and verify its complete frame.
         fork
             begin
                 pulse_write(8'hA5);
@@ -196,7 +202,7 @@ module uart_top_tb;
 
         check(tx_busy === 1'b0, "tx_busy low after transmit");
 
-        // 2. Basic RX Test
+        // 2. Basic RX Test: decode one externally driven UART frame.
         fork
             begin
                 drive_rx_byte(8'h3C);
@@ -206,7 +212,7 @@ module uart_top_tb;
             end
         join
 
-        // 3. Busy Write Rejection Test
+        // 3. Busy Write Rejection Test: writes during TX must not restart it.
         fork
             begin
                 pulse_write(8'h66);
@@ -229,7 +235,7 @@ module uart_top_tb;
         check(tx_busy === 1'b0, "busy write rejected without extending transmit");
         check(tx === 1'b1, "tx returns idle high after rejected busy write");
 
-        // 4. Reset During TX Test
+        // 4. Reset During TX Test: asynchronous reset aborts an active frame.
         reset_dut();
         @(negedge clk);
         din   = 8'hC7;
@@ -246,7 +252,7 @@ module uart_top_tb;
         check(tx === 1'b1, "reset drives tx idle high during TX");
         check(rx_valid === 1'b0, "reset clears rx_valid during TX");
 
-        // 5. Glitch and Bad Framing Tests
+        // 5. Glitch and Bad Framing Tests: reject noise and invalid stop bits.
         drive_rx_glitch(1);
         ensure_no_rx_valid(BIT_CLKS * 2);
 
@@ -262,7 +268,7 @@ module uart_top_tb;
             end
         join
 
-        // 6. Reset During RX Test
+        // 6. Reset During RX Test: clear a partially received frame.
         fork
             begin
                 drive_rx_byte(8'hA3);
@@ -278,7 +284,7 @@ module uart_top_tb;
         wait_cycles(2);
         check(rx_valid === 1'b0, "reset clears rx_valid during RX");
 
-        // 7. Stress Testing Multiple Packets with clear pacing gaps
+        // 7. Stress Testing Multiple Packets with clear pacing gaps.
         for (int stress_idx = 0; stress_idx < 4; stress_idx++) begin
             fork
                 begin
@@ -297,7 +303,7 @@ module uart_top_tb;
             wait_cycles(BIT_CLKS * 4);
         end
 
-        // 8. Full-Duplex Simultaneous Operation
+        // 8. Full-Duplex Simultaneous Operation: TX and RX run concurrently.
         fork
             begin
                 pulse_write(8'h5A);

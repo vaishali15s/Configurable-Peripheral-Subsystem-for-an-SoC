@@ -21,6 +21,9 @@ module peripheral_subsystem_apb #(
     output logic                   ss_n
 );
 
+    // This wrapper exposes the peripheral subsystem through a simple APB
+    // register map while keeping SPI transfer control in the datapath below.
+
     localparam logic [PADDR_W-1:0] REG_TX_DATA  = 4'h0;
     localparam logic [PADDR_W-1:0] REG_RX_DATA  = 4'h4;
     localparam logic [PADDR_W-1:0] REG_CONTROL  = 4'h8;
@@ -65,6 +68,8 @@ module peripheral_subsystem_apb #(
     assign apb_read   = apb_access && !pwrite;
 
     always @(*) begin
+        // APB writes enqueue transmit data; APB reads dequeue received data.
+        // Unsupported addresses are reported as slave errors during access.
         tx_fifo_wr_en = 1'b0;
         tx_fifo_din   = pwdata[DATA_WIDTH-1:0];
         rx_fifo_rd_en = 1'b0;
@@ -87,6 +92,8 @@ module peripheral_subsystem_apb #(
     end
 
     always @(*) begin
+        // Register reads return FIFO data, control configuration, or status
+        // flags; unused addresses read as zero.
         prdata = 32'h0;
         case (paddr)
             REG_RX_DATA: begin
@@ -109,6 +116,7 @@ module peripheral_subsystem_apb #(
     end
 
     always_ff @(posedge pclk or negedge presetn) begin
+        // The control register retains the SPI clock divider and SPI mode.
         if (!presetn) begin
             spi_clk_div_reg <= 8'd2;
             spi_cpol_cpha_reg <= 2'b00;
@@ -187,6 +195,8 @@ module peripheral_subsystem_apb #(
             tx_fifo_rd_en <= 1'b0;
             spi_start   <= 1'b0;
 
+            // Remove one queued TX word and start SPI, then wait for done
+            // before allowing the next queued word to run.
             case (state)
                 IDLE: begin
                     if (!tx_fifo_empty && !spi_busy) begin

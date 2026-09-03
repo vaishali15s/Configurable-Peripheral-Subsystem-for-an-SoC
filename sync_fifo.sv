@@ -18,6 +18,9 @@ module sync_fifo #(
     output wire [$clog2(FIFO_DEPTH):0] data_count
 );
 
+    // This synchronous FIFO stores words in order while allowing independent
+    // write and read requests; pointer arithmetic supplies occupancy status.
+
     // Local parameters for pointer bit-widths (extra bit for wrap-around detection)
     localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
 
@@ -43,6 +46,8 @@ module sync_fifo #(
 
     // Next pointer logic
     always @(*) begin
+        // Advance only the pointers whose requests are valid and whose
+        // corresponding boundary condition does not block the operation.
         wr_ptr_next = wr_ptr;
         rd_ptr_next = rd_ptr;
 
@@ -68,6 +73,7 @@ module sync_fifo #(
 
     // Memory write operation
     always @(posedge clk) begin
+        // Writes are committed on the clock edge at the current write index.
         if (wr_en && !full_val) begin
             mem[wr_ptr[ADDR_WIDTH-1:0]] <= din;
         end
@@ -75,6 +81,8 @@ module sync_fifo #(
 
     // Memory read operation (combinational read data output)
     always @(*) begin
+        // The current read location is exposed combinationally for simple
+        // synchronous control logic and testbench observation.
         dout = mem[rd_ptr[ADDR_WIDTH-1:0]];
     end
 

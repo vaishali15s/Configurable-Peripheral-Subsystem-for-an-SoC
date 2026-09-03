@@ -2,6 +2,8 @@
 
 module peripheral_subsystem_tb;
 
+    // Integration testbench for the UART-to-SPI-to-UART loopback data path.
+
     parameter int DATA_WIDTH = 8;
     parameter int FIFO_DEPTH = 16;
     parameter int CLK_DIV_W  = 8;
@@ -62,6 +64,7 @@ module peripheral_subsystem_tb;
     end
 
     always @(negedge sclk) begin
+        // The mock SPI slave advances its response after each master edge.
         if (!ss_n) begin
             if (bit_index > 0) begin
                 bit_index <= bit_index - 1;
@@ -109,6 +112,8 @@ module peripheral_subsystem_tb;
     endtask
 
     task automatic drive_uart_rx_byte;
+        // Generate a physical UART frame with one start, eight data, and
+        // three idle bit periods after the stop bit.
         input logic [7:0] value;
         int bit_idx;
         begin
@@ -130,6 +135,7 @@ module peripheral_subsystem_tb;
     endtask
 
     task automatic expect_uart_tx_byte;
+        // Decode the DUT's UART output at bit centers and compare the byte.
         input logic [7:0] expected;
         input int timeout_cycles;
         logic [7:0] observed;

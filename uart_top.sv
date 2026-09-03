@@ -13,6 +13,9 @@ module uart_top #(
     input  logic        rx
 );
 
+    // The UART combines a transmit FSM and an oversampled receive FSM.
+    // Both paths use the same system clock and implement 8-N-1 framing.
+
     localparam int BIT_CLKS   = CLK_FREQ / BAUD_RATE;
 
     localparam int DIVISOR    = (BIT_CLKS / 16 > 0) ? (BIT_CLKS / 16) : 1;
@@ -70,6 +73,8 @@ module uart_top #(
         end
     end
 
+    // TX accepts a word only while idle, sends a low start bit, shifts eight
+    // data bits least-significant bit first, and finishes with a high stop bit.
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             tx_state     <= TX_IDLE;
@@ -149,6 +154,9 @@ module uart_top #(
     logic [1:0] rx_start_low_cnt;
     logic rx_idle_ok;
 
+    // RX waits for a stable low start indication, samples each data bit at
+    // its center using the 16x tick, validates the stop bit, and pulses
+    // rx_valid for exactly one clock when a complete byte is available.
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rx_state         <= RX_IDLE;

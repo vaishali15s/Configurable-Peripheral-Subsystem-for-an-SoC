@@ -23,6 +23,8 @@ module peripheral_subsystem_soc_top #(
     output logic                   SS_n
 );
 
+    // The SoC-facing shell preserves APB naming and directly routes the
+    // wrapper's SPI pins to the external peripheral interface.
     peripheral_subsystem_apb #(
         .DATA_WIDTH(DATA_WIDTH),
         .FIFO_DEPTH(FIFO_DEPTH),

@@ -2,6 +2,9 @@
 
 module peripheral_subsystem_apb_tb;
 
+    // APB verification covers register access, SPI completion, RX data
+    // visibility, FIFO status transitions, and invalid-address reporting.
+
     parameter int DATA_WIDTH = 8;
     parameter int FIFO_DEPTH = 16;
     parameter int CLK_DIV_W  = 8;
@@ -64,6 +67,7 @@ module peripheral_subsystem_apb_tb;
     end
 
     always @(negedge sclk) begin
+        // Present the fixed slave response one bit at a time on MISO.
         if (!ss_n) begin
             if (miso_bit_idx > 0) begin
                 miso_bit_idx <= miso_bit_idx - 1;
@@ -92,6 +96,7 @@ module peripheral_subsystem_apb_tb;
     endtask
 
     task automatic apb_write32;
+        // Perform the APB setup, access, and teardown phases for a write.
         input logic [PADDR_W-1:0] addr;
         input logic [31:0] data;
         begin
@@ -115,6 +120,7 @@ module peripheral_subsystem_apb_tb;
     endtask
 
     task automatic apb_read32;
+        // Perform an APB read and capture PRDATA during the access phase.
         input logic [PADDR_W-1:0] addr;
         output logic [31:0] data;
         begin
@@ -171,7 +177,7 @@ module peripheral_subsystem_apb_tb;
         presetn = 1'b1;
         wait_cycles(2);
 
-        // Program SPI control: mode=2'b00, clk_div=8'd2
+        // Program SPI control: mode=2'b00, clk_div=8'd2.
         apb_write32(4'h8, 32'h0000_0008); // [9:2]=2, [1:0]=0
         apb_read32(4'h8, rd_data);
         check(rd_data[9:2] == 8'd2, "Control register clk_div mismatch");

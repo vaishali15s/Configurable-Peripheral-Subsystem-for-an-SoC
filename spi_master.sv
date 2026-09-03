@@ -21,6 +21,9 @@ module spi_master #(
     output logic                   ss_n
 );
 
+    // This controller converts a parallel word into an SPI transaction and
+    // reconstructs the simultaneously received serial word.
+
     // Unpack mode bits
     logic cpol, cpha;
     assign cpol = cpol_cpha[1];
@@ -61,6 +64,8 @@ module spi_master #(
         end else begin
             done <= 1'b0;
             
+            // The FSM holds chip select active during setup and shifting,
+            // then publishes the received word for one completion cycle.
             case (state)
                 IDLE: begin
                     sclk <= cpol;

@@ -2,6 +2,8 @@
 
 module spi_master_tb;
 
+    // This testbench exercises reset, SPI mode 0, and SPI mode 3 transfers.
+
     parameter int DATA_WIDTH = 8;
     parameter int CLK_DIV_WIDTH = 8;
 
@@ -51,6 +53,8 @@ module spi_master_tb;
     int miso_bit_idx = 7;
 
     always_ff @(posedge sclk or posedge ss_n) begin
+        // Model an SPI slave that presents a deterministic response pattern
+        // and advances its output bit as the master clocks the bus.
         if (ss_n) begin
             miso_bit_idx = 7;
             miso <= miso_pattern[7];
@@ -77,7 +81,7 @@ module spi_master_tb;
         rst_n = 1'b1;
         #20;
 
-        // Test 1: SPI Mode 0 Transaction
+        // Test 1: launch and observe a mode 0 transaction.
         $display("[%0t] Starting SPI Mode 0 Transaction...", $time);
         @(posedge clk);
         din   = 8'hA5;
@@ -90,7 +94,7 @@ module spi_master_tb;
         @(posedge done);
         $display("[%0t] Transaction finished! Received Data: 0%h", $time, dout);
 
-        // Test 2: SPI Mode 3 Transaction with a different divisor
+        // Test 2: repeat the transfer in mode 3 using a slower SPI clock.
         #50;
         $display("[%0t] Starting SPI Mode 3 Transaction...", $time);
         @(posedge clk);

@@ -23,6 +23,9 @@ module peripheral_subsystem #(
     input  logic [1:0]             spi_cpol_cpha
 );
 
+    // This top-level data path bridges UART input to SPI output and returns
+    // SPI input through UART, using FIFOs to decouple the two peripherals.
+
     // ----------------------------------------------------
     // Internal Wires & Signals
     // ----------------------------------------------------
@@ -172,6 +175,8 @@ module peripheral_subsystem #(
             rx_fifo_rd_en  <= 1'b0;
             uart_tx_wr_en  <= 1'b0;
 
+            // Priority is given to launching queued SPI work; completed SPI
+            // words are then drained to UART whenever the transmitter is free.
             case (state)
                 IDLE: begin
                     if (!tx_fifo_empty && !spi_busy) begin
